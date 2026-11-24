@@ -166,7 +166,10 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
   flex: 1; min-width: 0; font: 800 1.3rem var(--body); padding: 14px 16px; border-radius: 16px;
   border: 3px solid rgba(233,251,255,.25); background: rgba(233,251,255,.95); color: var(--ink);
 }
-.entry input:disabled { background: rgba(233,251,255,.12); color: var(--foam-dim); }
+.entry input:disabled { background: rgba(233,251,255,.12); color: var(--foam); -webkit-text-fill-color: var(--foam); opacity: 1; }
+.entry input.live { border-color: var(--sun); }
+.entry input.warn { border-color: var(--coral); background: #ffe3e0; color: #b8433a; -webkit-text-fill-color: #b8433a; }
+.entry input:disabled.warn { background: rgba(255,111,97,.18); color: var(--coral); -webkit-text-fill-color: var(--coral); }
 .entry input.bad { border-color: var(--coral); animation: shake .35s; }
 @keyframes shake { 25% { transform: translateX(-6px); } 50% { transform: translateX(6px); } 75% { transform: translateX(-3px); } }
 .msg { min-height: 1.4em; text-align: center; font-weight: 800; color: var(--coral); }
@@ -458,6 +461,26 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
     return null;
   }
 
+  // Problems you can spot while the word is still being typed.
+  function liveWordError(raw, letter, used) {
+    const w = normalize(raw);
+    if (!w) return null;
+    if (!/^[a-z]+$/.test(w)) return "Letters only, one word.";
+    if (w[0] !== letter.toLowerCase()) return `It has to start with ${letter}.`;
+    if (used.some(u => u.word === w && !u.rejected)) return `"${w}" was already said!`;
+    return null;
+  }
+  let liveMsgShown = false;
+  // Paint the input red (or not) and lock Go while the word is clearly wrong.
+  function showLive(raw, letter, used, isTyper) {
+    const inp = $("wordInput");
+    const err = liveWordError(raw, letter, used);
+    inp.classList.toggle("warn", !!err);
+    if (isTyper) $("goWord").disabled = !!err || !normalize(raw);
+    if (err) { setMsg(err); liveMsgShown = true; }
+    else if (liveMsgShown) { setMsg(""); liveMsgShown = false; }
+  }
+
   /* ---------- sound ---------- */
   let ac = null, muted = store.get("wb-muted", false);
   function tone(freq, dur = .12, type = "sine", vol = .15, slide = 0) {
@@ -631,6 +654,7 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
     $("challengeBtn").textContent = G.last ? (G.last.word ? `Challenge "${G.last.word}"` : `Challenge ${G.players[G.last.p].name}`) : "Challenge";
     const inp = $("wordInput"); inp.value = ""; inp.classList.remove("bad"); inp.disabled = false; $("goWord").disabled = false;
     inp.placeholder = `A word starting with ${L()}`;
+    inp.classList.remove("warn"); $("goWord").disabled = true; liveMsgShown = false;
     if (settings.mode === "type") inp.focus({ preventScroll: true });
     G.deadline = performance.now() + G.turnLen * 1000; G.lastTick = null; G.paused = null;
     clearInterval(G.timer); G.timer = setInterval(tick, 50); tick();
@@ -712,6 +736,10 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
     showOut({ letter, name: G.players[i].name, reason, words: tmp.innerHTML, left, nextLabel: `Next letter: ${L()}`, canNext: true });
   }
   $("startBtn").onclick = newGame;
+  $("wordInput").addEventListener("input", () => {
+    if (mode === "local" && G) showLive($("wordInput").value, L(), G.used, true);
+    else if (mode === "online") Online.onType();
+  });
 
   /* ================= ONLINE ================= */
   const Online = (() => {
@@ -790,6 +818,21 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
         if (mode === "online") render();
       };
       es.addEventListener("kicked", () => { drop("The host removed you from that game."); });
+      es.addEventListener("typing", ev => {
+        let d; try { d = JSON.parse(ev.data); } catch { return; }
+        if (!S || S.phase !== "play" || d.seq !== S.turnSeq || d.id === me) return;
+        $("wordInput").value = d.text;
+        $("wordInput").classList.toggle("live", !!d.text);
+        showLive(d.text, S.letter, S.used, false);
+      });
+      es.addEventListener("rejected", ev => {
+        let d; try { d = JSON.parse(ev.data); } catch { return; }
+        if (!S || d.seq !== S.turnSeq || d.id === me) return;
+        const inp = $("wordInput");
+        inp.value = d.word;
+        inp.classList.add("warn"); inp.classList.remove("bad"); void inp.offsetWidth; inp.classList.add("bad");
+        setMsg(`${byId(d.id).name}: ${d.reason}`); liveMsgShown = true; sfx.bad();
+      });
       es.onerror = () => {
         if (es && es.readyState === EventSource.CLOSED) drop("That game has ended or the server restarted.");
         else if (mode === "online") setMsg("Reconnecting…");
@@ -906,8 +949,9 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
       if (S.letter !== shownLetter) { shownLetter = S.letter; popLetter($("letter"), S.letter); }
       if (S.turnSeq !== lastSeq) {
         lastSeq = S.turnSeq; lastTickS = null; sending = false;
-        const inp = $("wordInput"); inp.value = ""; inp.classList.remove("bad");
-        inp.disabled = !mine; $("goWord").disabled = !mine;
+        const inp = $("wordInput"); inp.value = ""; inp.classList.remove("bad", "warn", "live");
+        inp.disabled = !mine; $("goWord").disabled = true; liveMsgShown = false;
+        lastSent = "";
         inp.placeholder = mine ? `A word starting with ${S.letter}` : `Waiting for ${cur.name}…`;
         $("turnActions").hidden = !mine;
         if (S.lastWord && !roundChanged) {
@@ -935,6 +979,23 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
       }, 50);
     }
 
+    // Send what I'm typing so others can watch, at most ~12 times a second.
+    let typeTimer = null, lastSentAt = 0, lastSent = "";
+    function onType() {
+      if (!S || S.phase !== "play" || S.players[S.turn].id !== me) return;
+      showLive($("wordInput").value, S.letter, S.used, true);
+      const send = () => {
+        typeTimer = null;
+        const text = $("wordInput").value;
+        if (text === lastSent) return;
+        lastSent = text; lastSentAt = Date.now();
+        act({ type: "typing", text });
+      };
+      clearTimeout(typeTimer);
+      const wait = 80 - (Date.now() - lastSentAt);
+      if (wait <= 0) send(); else typeTimer = setTimeout(send, wait);
+    }
+
     async function submit() {
       if (!S || S.phase !== "play" || S.players[S.turn].id !== me || sending) return;
       const w = normalize($("wordInput").value);
@@ -949,7 +1010,7 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
       }
     }
 
-    return { open, leave, act, submit };
+    return { open, leave, act, submit, onType };
   })();
 
   /* ---------- ambient bubbles ---------- */

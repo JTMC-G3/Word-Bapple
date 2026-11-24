@@ -20,6 +20,9 @@ PORT=8080 npm start
 
 No `npm install` needed. The server has no dependencies.
 
+## Watching other players
+In online games everyone sees the current player's word appear live as they type. If the word breaks a rule (wrong first letter, not letters only, or already said) it turns red for everyone and **Go** stays locked. If they submit a word that isn't real, everyone sees it rejected, and the player has to try again before the clock runs out.
+
 ## Dictionary
 Words are checked on the server, so nobody can sneak in a made-up word:
 1. First against `words.txt`, a bundled list of 274,000 English words. This is instant.

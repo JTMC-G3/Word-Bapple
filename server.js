@@ -119,6 +119,12 @@ function broadcast(room) {
   for (const set of room.streams.values()) for (const res of set) res.write(data);
 }
 
+// Small named events that don't carry the whole game state.
+function emit(room, event, obj) {
+  const data = `event: ${event}\ndata: ${JSON.stringify(obj)}\n\n`;
+  for (const set of room.streams.values()) for (const res of set) res.write(data);
+}
+
 function setTimer(room, ms, fn) {
   clearTimeout(room.timer);
   room.timer = setTimeout(() => { room.timer = null; fn(); }, ms);
@@ -215,19 +221,26 @@ async function act(room, p, body) {
       Object.assign(room, { letterIdx: startIndex(room.settings), round: 1, turn: 0, used: [], lastWord: null, out: null, winner: null, totalWords: 0 });
       startIntro(room); return null;
     }
+    case "typing": {
+      // Live preview of what the current player is typing, shown to everyone else.
+      if (room.phase !== "play" || room.players[room.turn].id !== p.id) return null;
+      emit(room, "typing", { id: p.id, seq: room.turnSeq, text: String(body.text || "").slice(0, 30) });
+      return null;
+    }
     case "word": {
       if (room.phase !== "play" || room.players[room.turn].id !== p.id) return "It's not your turn.";
       if (room.checking) return "Checking your last word…";
       const w = String(body.word || "").trim().toLowerCase();
+      const reject = reason => { emit(room, "rejected", { id: p.id, seq: room.turnSeq, word: w, reason }); return reason; };
       const err = wordError(w, letter(room), room.used);
-      if (err) return err;
+      if (err) return reject(err);
       const seq = room.turnSeq;
       room.checking = true;
       let res;
       try { res = await isRealWord(w); } finally { room.checking = false; }
       if (room.turnSeq !== seq || room.phase !== "play") return "Too slow!";
-      if (!res.ok) return res.source === "unavailable" ? `"${w}" isn't in the word list.` : `"${w}" isn't in the dictionary.`;
-      if (room.used.some(u => u.word === w)) return `"${w}" was already said!`;
+      if (!res.ok) return reject(res.source === "unavailable" ? `"${w}" isn't in the word list.` : `"${w}" isn't in the dictionary.`);
+      if (room.used.some(u => u.word === w)) return reject(`"${w}" was already said!`);
       room.used.push({ word: w, id: p.id });
       room.lastWord = { word: w, id: p.id };
       p.words++; room.totalWords++;

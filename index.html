@@ -227,7 +227,7 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
         <li>It has to be a real English word, and no repeats on the same letter.</li>
         <li>Run out of time, or press <b>I'm stuck</b>, and you're out.</li>
         <li>As soon as one person is out, the letter moves on: A, then B, then C…</li>
-        <li>Settings let you start on any letter, a random one, or change the letter after every single word.</li>
+        <li>Settings let you start on any letter, a random one, or switch to a random letter after every single word.</li>
         <li>Last player standing wins!</li>
       </ol>
     </details>
@@ -259,7 +259,7 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
     <label class="opt" for="startLetter"><span class="label">Start on letter</span>
       <select class="field" id="startLetter"></select>
     </label>
-    <label class="toggle"><input type="checkbox" id="everyWord"> New letter after every word</label>
+    <label class="toggle"><input type="checkbox" id="everyWord"> Random new letter after every word</label>
     <label class="toggle"><input type="checkbox" id="dictOn"> Real words only (dictionary check)</label>
     <label class="toggle"><input type="checkbox" id="speedUp"> Clock gets faster every word</label>
     <label class="toggle"><input type="checkbox" id="skipHard"> Skip tough letters (Q, X, Z)</label>
@@ -309,7 +309,7 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
       <label class="opt" for="onStartLetter"><span class="label">Start on letter</span>
         <select class="field" id="onStartLetter"></select>
       </label>
-      <label class="toggle"><input type="checkbox" id="onEveryWord"> New letter after every word</label>
+      <label class="toggle"><input type="checkbox" id="onEveryWord"> Random new letter after every word</label>
       <label class="toggle"><input type="checkbox" id="onSpeedUp"> Clock gets faster every word</label>
       <label class="toggle"><input type="checkbox" id="onSkipHard"> Skip tough letters (Q, X, Z)</label>
     </div>
@@ -584,6 +584,8 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
 
   let G = null;
   const L = () => { const ls = letterList(G.skipHard); return ls[G.letterIdx % ls.length]; };
+  // a random letter that isn't the current one
+  const randomOtherIdx = () => { const n = letterList(G.skipHard).length; return (G.letterIdx % n + 1 + Math.floor(Math.random() * (n - 1))) % n; };
   const localColor = u => G.players[u.p].color, localName = u => G.players[u.p].name;
 
   function newGame() {
@@ -643,7 +645,7 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
   function passTurn() {
     G.totalWords++; G.players[G.turn].words++;
     if (settings.speedUp) G.turnLen = Math.max(3, +(G.turnLen - .4).toFixed(1));
-    if (G.everyWord) { G.letterIdx++; popLetter($("letter"), L()); }
+    if (G.everyWord) { G.letterIdx = randomOtherIdx(); popLetter($("letter"), L()); }
     G.turn = nextAliveIn(G.players, G.turn);
     hideConfirm(); startTurn();
   }
@@ -704,7 +706,8 @@ select.field option { background: var(--sea-deep); color: var(--foam); }
     const letter = L();
     const tmp = document.createElement("div"); fillWords(tmp, G.used, localColor, localName);
     G.turn = nextAliveIn(G.players, i);
-    G.letterIdx++; G.round++;
+    G.letterIdx = G.everyWord ? randomOtherIdx() : G.letterIdx + 1;
+    G.round++;
     setMsg("");
     showOut({ letter, name: G.players[i].name, reason, words: tmp.innerHTML, left, nextLabel: `Next letter: ${L()}`, canNext: true });
   }

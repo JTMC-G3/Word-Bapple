@@ -95,6 +95,12 @@ function startIndex(s) {
   const i = ls.findIndex(l => l >= s.startLetter); // a skipped letter starts on the next one
   return i < 0 ? 0 : i;
 }
+// A random letter that isn't the current one.
+function randomOtherIndex(room) {
+  const n = letterList(room.settings.skipHard).length;
+  const cur = room.letterIdx % n;
+  return (cur + 1 + crypto.randomInt(n - 1)) % n;
+}
 const letter = room => { const ls = letterList(room.settings.skipHard); return ls[room.letterIdx % ls.length]; };
 
 function publicState(room) {
@@ -152,7 +158,8 @@ function eliminate(room, i, reason) {
   }
   room.out = { id: p.id, name: p.name, reason, letter: letter(room), used: room.used };
   room.turn = nextAlive(room.players, i);
-  room.letterIdx++; room.round++;
+  room.letterIdx = room.settings.everyWord ? randomOtherIndex(room) : room.letterIdx + 1;
+  room.round++;
   room.phase = "out";
   room.deadline = Date.now() + OUT_MS;
   setTimer(room, OUT_MS, () => startIntro(room));
@@ -224,7 +231,7 @@ async function act(room, p, body) {
       room.used.push({ word: w, id: p.id });
       room.lastWord = { word: w, id: p.id };
       p.words++; room.totalWords++;
-      if (room.settings.everyWord) room.letterIdx++;
+      if (room.settings.everyWord) room.letterIdx = randomOtherIndex(room);
       if (room.settings.speedUp) room.turnLen = Math.max(3, +(room.turnLen - 0.4).toFixed(1));
       room.turn = nextAlive(room.players, room.turn);
       startTurn(room);

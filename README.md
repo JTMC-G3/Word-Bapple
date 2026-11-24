@@ -36,7 +36,7 @@ If the API can't be reached, only words on the bundled list count. Set `DICT_API
 
 Options:
 - **Start on letter**: begin on any letter A–Z, or pick **Random letter**.
-- **New letter after every word**: the letter moves on (A, B, C…) every time someone says a word, not only when someone is out.
+- **Random new letter after every word**: every time someone says a word, the letter jumps to a random new one (never the same letter twice in a row). New rounds after someone is out also get a random letter.
 - Seconds per turn, a clock that speeds up every word, and skipping Q/X/Z. In same-room mode you can also choose **Say it** (say the word out loud and tap) and use **Challenge** to vote out a fake word.
 
 The word list comes from the [`word-list`](https://github.com/sindresorhus/word-list) package (MIT license, see `WORDS-LICENSE.txt`).

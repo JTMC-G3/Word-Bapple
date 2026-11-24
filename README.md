@@ -34,6 +34,9 @@ If the API can't be reached, only words on the bundled list count. Set `DICT_API
 4. When someone is out, the next letter starts.
 5. Last player standing wins.
 
-Options: seconds per turn, a clock that speeds up every word, and skipping Q/X/Z. In same-room mode you can also choose **Say it** (say the word out loud and tap) and use **Challenge** to vote out a fake word.
+Options:
+- **Start on letter**: begin on any letter A–Z, or pick **Random letter**.
+- **New letter after every word**: the letter moves on (A, B, C…) every time someone says a word, not only when someone is out.
+- Seconds per turn, a clock that speeds up every word, and skipping Q/X/Z. In same-room mode you can also choose **Say it** (say the word out loud and tap) and use **Challenge** to vote out a fake word.
 
 The word list comes from the [`word-list`](https://github.com/sindresorhus/word-list) package (MIT license, see `WORDS-LICENSE.txt`).

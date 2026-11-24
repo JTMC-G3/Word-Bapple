@@ -67,7 +67,7 @@ function createRoom(hostName) {
   const code = newCode();
   const room = {
     code, hostId: null, phase: "lobby", createdAt: Date.now(), touched: Date.now(),
-    settings: { time: 8, speedUp: true, skipHard: false },
+    settings: { time: 8, speedUp: true, skipHard: false, startLetter: "A", everyWord: false },
     players: [], letterIdx: 0, round: 1, turn: 0, turnLen: 8, turnSeq: 0, deadline: 0,
     used: [], lastWord: null, out: null, winner: null, totalWords: 0,
     tokens: new Map(), streams: new Map(), timer: null, checking: false
@@ -89,13 +89,19 @@ function addPlayer(room, name) {
 }
 function recolor(room) { room.players.forEach((p, i) => { p.color = COLORS[i % COLORS.length]; }); }
 const playerByToken = (room, token) => room.players.find(p => p.id === room.tokens.get(token));
+function startIndex(s) {
+  const ls = letterList(s.skipHard);
+  if (s.startLetter === "random") return crypto.randomInt(ls.length);
+  const i = ls.findIndex(l => l >= s.startLetter); // a skipped letter starts on the next one
+  return i < 0 ? 0 : i;
+}
 const letter = room => { const ls = letterList(room.settings.skipHard); return ls[room.letterIdx % ls.length]; };
 
 function publicState(room) {
   return {
     code: room.code, hostId: room.hostId, phase: room.phase, settings: room.settings,
     players: room.players.map(({ token, ...p }) => p),
-    letter: letter(room), nextLetter: letterList(room.settings.skipHard)[(room.letterIdx) % letterList(room.settings.skipHard).length],
+    letter: letter(room),
     round: room.round, turn: room.turn, turnLen: room.turnLen, turnSeq: room.turnSeq, deadline: room.deadline,
     used: room.used, lastWord: room.lastWord, out: room.out, winner: room.winner, totalWords: room.totalWords,
     serverNow: Date.now()
@@ -184,6 +190,8 @@ async function act(room, p, body) {
       if ([5, 8, 12, 20].includes(s.time)) room.settings.time = s.time;
       if (typeof s.speedUp === "boolean") room.settings.speedUp = s.speedUp;
       if (typeof s.skipHard === "boolean") room.settings.skipHard = s.skipHard;
+      if (s.startLetter === "random" || /^[A-Z]$/.test(s.startLetter)) room.settings.startLetter = s.startLetter;
+      if (typeof s.everyWord === "boolean") room.settings.everyWord = s.everyWord;
       broadcast(room); return null;
     }
     case "kick": {
@@ -197,7 +205,7 @@ async function act(room, p, body) {
       if (room.players.length < 2) return "You need at least 2 players.";
       for (const x of room.players.slice(MAX_PLAYERS)) removePlayer(room, x.id);
       room.players.forEach(x => { x.alive = true; x.words = 0; });
-      Object.assign(room, { letterIdx: 0, round: 1, turn: 0, used: [], lastWord: null, out: null, winner: null, totalWords: 0 });
+      Object.assign(room, { letterIdx: startIndex(room.settings), round: 1, turn: 0, used: [], lastWord: null, out: null, winner: null, totalWords: 0 });
       startIntro(room); return null;
     }
     case "word": {
@@ -216,6 +224,7 @@ async function act(room, p, body) {
       room.used.push({ word: w, id: p.id });
       room.lastWord = { word: w, id: p.id };
       p.words++; room.totalWords++;
+      if (room.settings.everyWord) room.letterIdx++;
       if (room.settings.speedUp) room.turnLen = Math.max(3, +(room.turnLen - 0.4).toFixed(1));
       room.turn = nextAlive(room.players, room.turn);
       startTurn(room);

@@ -98,6 +98,8 @@ p { margin: 0; line-height: 1.5; }
 .seg button[aria-pressed="true"] { background: var(--foam); color: var(--ink); }
 .seg button:disabled { cursor: default; }
 .toggle { display: flex; align-items: center; gap: 10px; font-weight: 700; cursor: pointer; }
+select.field { cursor: pointer; }
+select.field option { background: var(--sea-deep); color: var(--foam); }
 .toggle input { width: 20px; height: 20px; accent-color: var(--kelp); flex: none; }
 
 .btn {
@@ -225,6 +227,7 @@ p { margin: 0; line-height: 1.5; }
         <li>It has to be a real English word, and no repeats on the same letter.</li>
         <li>Run out of time, or press <b>I'm stuck</b>, and you're out.</li>
         <li>As soon as one person is out, the letter moves on: A, then B, then C…</li>
+        <li>Settings let you start on any letter, a random one, or change the letter after every single word.</li>
         <li>Last player standing wins!</li>
       </ol>
     </details>
@@ -253,6 +256,10 @@ p { margin: 0; line-height: 1.5; }
         </div>
       </div>
     </div>
+    <label class="opt" for="startLetter"><span class="label">Start on letter</span>
+      <select class="field" id="startLetter"></select>
+    </label>
+    <label class="toggle"><input type="checkbox" id="everyWord"> New letter after every word</label>
     <label class="toggle"><input type="checkbox" id="dictOn"> Real words only (dictionary check)</label>
     <label class="toggle"><input type="checkbox" id="speedUp"> Clock gets faster every word</label>
     <label class="toggle"><input type="checkbox" id="skipHard"> Skip tough letters (Q, X, Z)</label>
@@ -299,6 +306,10 @@ p { margin: 0; line-height: 1.5; }
           <button type="button" data-v="20">20</button>
         </div>
       </div>
+      <label class="opt" for="onStartLetter"><span class="label">Start on letter</span>
+        <select class="field" id="onStartLetter"></select>
+      </label>
+      <label class="toggle"><input type="checkbox" id="onEveryWord"> New letter after every word</label>
       <label class="toggle"><input type="checkbox" id="onSpeedUp"> Clock gets faster every word</label>
       <label class="toggle"><input type="checkbox" id="onSkipHard"> Skip tough letters (Q, X, Z)</label>
     </div>
@@ -401,6 +412,15 @@ p { margin: 0; line-height: 1.5; }
     return from;
   };
   const normalize = w => w.trim().toLowerCase();
+  function startIndex(s) {
+    const ls = letterList(s.skipHard);
+    if (s.startLetter === "random") return Math.floor(Math.random() * ls.length);
+    const i = ls.findIndex(l => l >= s.startLetter);
+    return i < 0 ? 0 : i;
+  }
+  function fillLetterSelect(sel) {
+    sel.innerHTML = `<option value="random">Random letter</option>` + ALPHA.split("").map(l => `<option value="${l}">${l}</option>`).join("");
+  }
 
   /* ---------- server + dictionary ---------- */
   let SERVER = false;
@@ -527,7 +547,7 @@ p { margin: 0; line-height: 1.5; }
 
   /* ================= LOCAL (pass-and-play) ================= */
   let names = store.get("wb-names", ["Nia", "Theo", "Sam"]);
-  const settings = Object.assign({ time: 8, mode: "type", speedUp: true, skipHard: false, dict: true }, store.get("wb-settings", {}));
+  const settings = Object.assign({ time: 8, mode: "type", speedUp: true, skipHard: false, dict: true, startLetter: "A", everyWord: false }, store.get("wb-settings", {}));
   const saveSettings = () => store.set("wb-settings", settings);
 
   function renderPlayers() {
@@ -552,7 +572,10 @@ p { margin: 0; line-height: 1.5; }
   const syncDictToggle = () => { $("dictOn").disabled = settings.mode === "say" || !SERVER; };
   bindSeg("timeSeg", () => settings.time, v => { settings.time = +v; saveSettings(); });
   bindSeg("modeSeg", () => settings.mode, v => { settings.mode = v; saveSettings(); syncDictToggle(); });
-  for (const [id, key] of [["speedUp", "speedUp"], ["skipHard", "skipHard"], ["dictOn", "dict"]]) {
+  fillLetterSelect($("startLetter"));
+  $("startLetter").value = settings.startLetter;
+  $("startLetter").onchange = e => { settings.startLetter = e.target.value; saveSettings(); };
+  for (const [id, key] of [["speedUp", "speedUp"], ["skipHard", "skipHard"], ["dictOn", "dict"], ["everyWord", "everyWord"]]) {
     $(id).checked = settings[key];
     $(id).onchange = e => { settings[key] = e.target.checked; saveSettings(); };
   }
@@ -567,7 +590,8 @@ p { margin: 0; line-height: 1.5; }
     const clean = names.map(n => n.trim()).map((n, i) => n || `Player ${i + 1}`);
     G = {
       players: clean.map((name, i) => ({ name, color: COLORS[i % COLORS.length], alive: true, words: 0 })),
-      letterIdx: 0, round: 1, turn: 0, used: [], last: null, totalWords: 0, seq: 0,
+      letterIdx: startIndex(settings), round: 1, turn: 0, used: [], last: null, totalWords: 0, seq: 0,
+      everyWord: settings.everyWord,
       timer: null, deadline: 0, turnLen: settings.time, skipHard: settings.skipHard,
       useDict: settings.dict && settings.mode === "type" && SERVER
     };
@@ -590,8 +614,7 @@ p { margin: 0; line-height: 1.5; }
     $("sayBox").hidden = settings.mode !== "say";
     $("turnActions").hidden = false; $("challengeBtn").hidden = false;
     popLetter($("letter"), L());
-    $("wordInput").placeholder = `A word starting with ${L()}`;
-    $("wordsLabel").textContent = `Words on ${L()}`;
+    $("wordsLabel").textContent = G.everyWord ? "Words this round" : `Words on ${L()}`;
     fillWords($("wordList"), G.used, localColor, localName);
     hideConfirm(); setMsg("");
     startTurn();
@@ -605,6 +628,7 @@ p { margin: 0; line-height: 1.5; }
     $("challengeBtn").disabled = !G.last;
     $("challengeBtn").textContent = G.last ? (G.last.word ? `Challenge "${G.last.word}"` : `Challenge ${G.players[G.last.p].name}`) : "Challenge";
     const inp = $("wordInput"); inp.value = ""; inp.classList.remove("bad"); inp.disabled = false; $("goWord").disabled = false;
+    inp.placeholder = `A word starting with ${L()}`;
     if (settings.mode === "type") inp.focus({ preventScroll: true });
     G.deadline = performance.now() + G.turnLen * 1000; G.lastTick = null; G.paused = null;
     clearInterval(G.timer); G.timer = setInterval(tick, 50); tick();
@@ -619,6 +643,7 @@ p { margin: 0; line-height: 1.5; }
   function passTurn() {
     G.totalWords++; G.players[G.turn].words++;
     if (settings.speedUp) G.turnLen = Math.max(3, +(G.turnLen - .4).toFixed(1));
+    if (G.everyWord) { G.letterIdx++; popLetter($("letter"), L()); }
     G.turn = nextAliveIn(G.players, G.turn);
     hideConfirm(); startTurn();
   }
@@ -674,7 +699,7 @@ p { margin: 0; line-height: 1.5; }
     const left = G.players.filter(p => p.alive);
     if (left.length <= 1) {
       return showWin(`<em>${esc(left[0].name)}</em> wins!`,
-        `Made it through ${G.round} ${G.round === 1 ? "letter" : "letters"} (A to ${L()}). ${G.totalWords} ${G.totalWords === 1 ? "word" : "words"} said in total.`, "Play again");
+        `Made it through ${G.round} ${G.round === 1 ? "round" : "rounds"}. ${G.totalWords} ${G.totalWords === 1 ? "word" : "words"} said in total.`, "Play again");
     }
     const letter = L();
     const tmp = document.createElement("div"); fillWords(tmp, G.used, localColor, localName);
@@ -688,7 +713,7 @@ p { margin: 0; line-height: 1.5; }
   /* ================= ONLINE ================= */
   const Online = (() => {
     let S = null, me = null, session = null, es = null, offset = 0, clock = null, gamesPoll = null;
-    let lastKey = null, lastSeq = null, lastTickS = null, sending = false;
+    let lastKey = null, lastSeq = null, lastTickS = null, sending = false, shownLetter = null;
     $("myName").value = store.get("wb-myname", "");
     $("myName").oninput = () => store.set("wb-myname", $("myName").value);
     const nameOf = () => $("myName").value.trim() || "Player";
@@ -732,7 +757,11 @@ p { margin: 0; line-height: 1.5; }
 
     $("createBtn").onclick = async () => {
       $("createBtn").disabled = true; joinMsg("Creating…", true);
-      try { connect(await api("api/create", { name: nameOf() })); }
+      try {
+        connect(await api("api/create", { name: nameOf() }));
+        const saved = store.get("wb-online-settings", null);
+        if (saved) act({ type: "settings", settings: saved });
+      }
       catch (e) { joinMsg(e.message); }
       finally { $("createBtn").disabled = false; }
     };
@@ -787,6 +816,9 @@ p { margin: 0; line-height: 1.5; }
     const syncTime = bindSeg("onTimeSeg", () => S ? S.settings.time : 8, v => isHost() && sendSettings({ time: +v }));
     $("onSpeedUp").onchange = e => sendSettings({ speedUp: e.target.checked });
     $("onSkipHard").onchange = e => sendSettings({ skipHard: e.target.checked });
+    $("onEveryWord").onchange = e => sendSettings({ everyWord: e.target.checked });
+    fillLetterSelect($("onStartLetter"));
+    $("onStartLetter").onchange = e => sendSettings({ startLetter: e.target.value });
     $("onStartBtn").onclick = async () => { const err = await act({ type: "start" }); if (err) $("lobbyWait").textContent = err; };
 
     function render() {
@@ -802,9 +834,11 @@ p { margin: 0; line-height: 1.5; }
         $("lobbyPlayers").innerHTML = S.players.map(p =>
           `<div class="prow"><span class="dot" style="background:${p.color}"></span><span style="flex:1;font-weight:800">${esc(p.name)}${p.id === me ? '<span class="you">you</span>' : ""}${p.id === S.hostId ? ' <span class="muted">(host)</span>' : ""}</span>${host && p.id !== me ? `<button class="x" type="button" data-kick="${esc(p.id)}" aria-label="Remove ${esc(p.name)}">&times;</button>` : ""}</div>`).join("");
         $("lobbyPlayers").querySelectorAll("[data-kick]").forEach(b => b.onclick = () => act({ type: "kick", id: b.dataset.kick }));
-        $("hostOpts").querySelectorAll("button, input").forEach(el => { el.disabled = !host; });
+        $("hostOpts").querySelectorAll("button, input, select").forEach(el => { el.disabled = !host; });
         syncTime();
         $("onSpeedUp").checked = S.settings.speedUp; $("onSkipHard").checked = S.settings.skipHard;
+        $("onEveryWord").checked = !!S.settings.everyWord; $("onStartLetter").value = S.settings.startLetter || "A";
+        if (host) store.set("wb-online-settings", S.settings);
         const n = S.players.filter(p => p.connected).length;
         $("onStartBtn").hidden = !host;
         $("onStartBtn").disabled = n < 2;
@@ -848,7 +882,7 @@ p { margin: 0; line-height: 1.5; }
       if (S.phase === "win" && changed) {
         const w = byId(S.winner);
         showWin(S.winner === me ? `<em>You</em> win!` : `<em>${esc(w.name)}</em> wins!`,
-          `Made it through ${S.round} ${S.round === 1 ? "letter" : "letters"}. ${S.totalWords} ${S.totalWords === 1 ? "word" : "words"} said in total.`,
+          `Made it through ${S.round} ${S.round === 1 ? "round" : "rounds"}. ${S.totalWords} ${S.totalWords === 1 ? "word" : "words"} said in total.`,
           isHost() ? "Back to the lobby" : null);
         if (!isHost()) $("winStats").textContent += " Waiting for the host to start another game.";
       }
@@ -862,10 +896,11 @@ p { margin: 0; line-height: 1.5; }
       if (roundChanged) {
         show("play");
         $("typeForm").hidden = false; $("sayBox").hidden = true; $("challengeBtn").hidden = true;
-        popLetter($("letter"), S.letter);
-        $("wordsLabel").textContent = `Words on ${S.letter}`;
+        shownLetter = null;
+        $("wordsLabel").textContent = S.settings.everyWord ? "Words this round" : `Words on ${S.letter}`;
         setMsg("");
       }
+      if (S.letter !== shownLetter) { shownLetter = S.letter; popLetter($("letter"), S.letter); }
       if (S.turnSeq !== lastSeq) {
         lastSeq = S.turnSeq; lastTickS = null; sending = false;
         const inp = $("wordInput"); inp.value = ""; inp.classList.remove("bad");

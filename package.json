@@ -1,0 +1,10 @@
+{
+  "name": "word-bapple",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A party word game: name words for each letter before the clock pops. Last player standing wins.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": { "node": ">=18" }
+}
